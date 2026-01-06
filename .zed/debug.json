@@ -1,0 +1,13 @@
+[
+    {
+        "adapter": "CodeLLDB",
+        "label": "Debug (CodeLLDB)",
+        "request": "launch",
+        "name": "Debug (CodeLLDB)",
+        "build": "Build Debug",
+        "program": "build/debug.exe",
+        "args": ["data"],
+        "stopOnEntry": false,
+        "cwd": "$ZED_WORKTREE_ROOT"
+    }
+]

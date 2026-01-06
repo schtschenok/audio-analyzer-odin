@@ -1,0 +1,62 @@
+[
+    {
+        "label": "RAD Debug",
+        "command": "mkdir -p build && odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe && raddbg --project:audio-analyzer.raddbg_project --auto_run build/debug.exe data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "never",
+        "hide": "always",
+        "show_summary": true,
+        "shell": {
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+        },
+    },
+    {
+        "label": "Build Debug",
+        "command": "mkdir -p build && odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": true,
+        "shell": {
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+        },
+    },
+    {
+        "label": "Run Debug",
+        "command": "mkdir -p build && odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe && build/debug.exe data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": true,
+        "shell": {
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+        },
+    },
+    {
+        "label": "Build Release",
+        "command": "mkdir -p build && odin build src -o:speed -out:build/release.exe",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": true,
+        "shell": {
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+        },
+    },
+    {
+        "label": "Run Release",
+        "command": "mkdir -p build && odin build src -o:speed -out:build/release.exe && build/release.exe data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": false,
+        "shell": {
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+        },
+    },
+]
