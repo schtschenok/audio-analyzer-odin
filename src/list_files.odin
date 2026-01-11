@@ -18,8 +18,6 @@ List_Files_Error :: enum {
 }
 
 list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Error {
-    context.allocator = mem.panic_allocator()
-
     root_handle, root_open_error := os.open(opt.folder)
 
     if (root_open_error != 0) {
@@ -57,7 +55,6 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
         }
 
         entries, readdir_error := os.read_dir(folder, -1, allocator = context.temp_allocator)
-
         if (readdir_error != 0) {
             return .CantReadDir
         }
@@ -66,10 +63,12 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
             if entry.is_dir {
                 entry_handle, entry_open_error := os.open(entry.fullpath)
                 defer os.close(entry_handle)
+
                 if (entry_open_error == 0) {
                     recurse_error := recurse_folder(entry_handle, files, recursion_depth_counter)
                     recursion_depth_counter^ = recursion_depth_counter^ - 1
-                    #partial switch recurse_error {
+
+                    switch recurse_error {
                     case .None:
                         continue
                     case .CantReadDir:
@@ -87,13 +86,19 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
                     // log.infof("File with different extension than \".wav\" encountered, skipping: \"%s\"", entry.fullpath)
                     continue
                 }
+
                 entry_handle, entry_open_error := os.open(entry.fullpath)
                 defer os.close(entry_handle)
+
                 if (entry_open_error != 0) {
                     log.warnf("Can't open file, skipping: \"%s\"", entry.fullpath)
                     continue
                 }
-                append(files, entry)
+
+                fullpath := strings.clone_from(entry.fullpath, allocator = context.allocator) // Allocates on  main allocator
+                valid_entry := entry
+                valid_entry.fullpath = fullpath
+                append(files, valid_entry)
             }
         }
 
@@ -117,7 +122,7 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
     }
 
     // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(a.size - b.size) }) // Ascending
-    sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(b.size - a.size) })     // Descending
+    // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(b.size - a.size) })     // Descending
 
     return .None
 }
