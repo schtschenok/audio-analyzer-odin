@@ -9,12 +9,12 @@ import "core:strings"
 
 List_Files_Error :: enum {
     None,
-    CantOpenRootDir,
-    CantStatRootDir,
-    CantReadRootDir,
-    RootDirIsNotDir,
-    NoWavFilesInRootDir,
-    RecursionTooDeep,
+    Cant_Open_Root_Dir,
+    Cant_Stat_Root_Dir,
+    Cant_Read_Root_Dir,
+    Root_Dir_Is_Not_Dir,
+    No_Wav_Files_In_Root_Dir,
+    Recursion_Too_Deep,
 }
 
 list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Error {
@@ -22,7 +22,7 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
 
     if (root_open_error != 0) {
         log.errorf("Unable to open folder \"%s\"", opt.folder)
-        return .CantOpenRootDir
+        return .Cant_Open_Root_Dir
     }
 
     defer os.close(root_handle)
@@ -31,18 +31,18 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
 
     if (root_stat_error != 0) {
         log.errorf("Unable to stat folder \"%s\"", opt.folder)
-        return .CantStatRootDir
+        return .Cant_Stat_Root_Dir
     }
 
     if !root_fileinfo.is_dir {
         log.errorf("\"%s\" not a dir", root_fileinfo.fullpath)
-        return .RootDirIsNotDir
+        return .Root_Dir_Is_Not_Dir
     }
 
     Recurse_Folder_Error :: enum {
         None,
-        CantReadDir,
-        RecursionTooDeep,
+        Cant_Read_Dir,
+        Recursion_Too_Deep,
     }
 
     MAX_RECURSION_DEPTH :: 128
@@ -51,12 +51,12 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
         recursion_depth_counter^ = recursion_depth_counter^ + 1
 
         if (recursion_depth_counter^ > MAX_RECURSION_DEPTH) {
-            return .RecursionTooDeep
+            return .Recursion_Too_Deep
         }
 
         entries, readdir_error := os.read_dir(folder, -1, allocator = context.temp_allocator)
         if (readdir_error != 0) {
-            return .CantReadDir
+            return .Cant_Read_Dir
         }
 
         for entry in entries {
@@ -71,11 +71,11 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
                     switch recurse_error {
                     case .None:
                         continue
-                    case .CantReadDir:
+                    case .Cant_Read_Dir:
                         log.warnf("Can't read subdirectory, skipping: \"%s\"", entry.fullpath)
                         continue
-                    case .RecursionTooDeep:
-                        return .RecursionTooDeep
+                    case .Recursion_Too_Deep:
+                        return .Recursion_Too_Deep
                     }
                 } else {
                     log.warnf("Can't open subdirectory, skipping: \"%s\"", entry.fullpath)
@@ -108,17 +108,17 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
     recursion_depth_counter: int = 0
     recurse_error := recurse_folder(root_handle, files, &recursion_depth_counter)
 
-    if (recurse_error == .CantReadDir) {
+    if (recurse_error == .Cant_Read_Dir) {
         log.errorf("Unable to read folder \"%s\"", root_fileinfo.fullpath)
-        return .CantReadRootDir
-    } else if (recurse_error == .RecursionTooDeep) {
+        return .Cant_Read_Root_Dir
+    } else if (recurse_error == .Recursion_Too_Deep) {
         log.errorf("Recursion is too deep (>%d) in folder \"%s\"", MAX_RECURSION_DEPTH, root_fileinfo.fullpath)
-        return .RecursionTooDeep
+        return .Recursion_Too_Deep
     }
 
     if len(files) == 0 {
         log.errorf("No files with \".wav\" extension in folder \"%s\"", root_fileinfo.fullpath)
-        return .NoWavFilesInRootDir
+        return .No_Wav_Files_In_Root_Dir
     }
 
     // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(a.size - b.size) }) // Ascending
