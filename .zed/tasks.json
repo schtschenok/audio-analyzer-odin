@@ -8,31 +8,31 @@
         "hide": "always",
         "show_summary": true,
         "shell": {
-            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe"
         },
     },
     {
         "label": "Build Debug",
-        "command": "mkdir -p build && odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe",
+        "command": "odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
         "hide": "never",
         "show_summary": true,
         "shell": {
-            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe"
         },
     },
     {
         "label": "Run Debug",
-        "command": "mkdir -p build && odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe && build/debug.exe data",
+        "command": "odin build src -debug -o:none -warnings-as-errors -out:build/debug.exe && build/debug.exe data",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
         "hide": "never",
         "show_summary": true,
         "shell": {
-            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe"
         },
     },
     {
@@ -44,7 +44,7 @@
         "hide": "never",
         "show_summary": true,
         "shell": {
-            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe"
         },
     },
     {
@@ -56,7 +56,7 @@
         "hide": "never",
         "show_summary": false,
         "shell": {
-            "program": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "program": "C:\\Program Files\\Git\\bin\\bash.exe"
         },
     },
     {
@@ -66,6 +66,6 @@
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
         "hide": "never",
-        "show_summary": true,
+        "show_summary": true
     },
 ]
