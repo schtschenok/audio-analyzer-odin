@@ -6,28 +6,49 @@ import "core:fmt"
 import "core:log"
 import "core:mem"
 import "core:os"
+import "core:prof/spall"
 import "core:sort"
 import "core:strings"
+import "core:sync"
+
+// TODO: Add timers and processed byte counters
 
 Options :: struct {
     folder: string `args:"pos=0,required" usage:"Input directory."`,
 }
 
 main :: proc() {
-    // TODO: Set default block size for temp_allocator to a slightly larger value?
-    // TODO: Use "when" for tracking allocators?
-    tracking_allocator: mem.Tracking_Allocator
-    mem.tracking_allocator_init(&tracking_allocator, context.allocator)
-    defer mem.tracking_allocator_destroy(&tracking_allocator)
-    defer print_tracking_allocator_results(&tracking_allocator, "default")
-    context.allocator = mem.tracking_allocator(&tracking_allocator)
+    temp_allocator: mem.Dynamic_Arena
+    mem.dynamic_arena_init(&temp_allocator, block_size = 1024 * 1024 * 16)
+    context.temp_allocator = mem.dynamic_arena_allocator(&temp_allocator)
+    defer mem.dynamic_arena_destroy(&temp_allocator)
 
-    tracking_temp_allocator: mem.Tracking_Allocator
-    mem.tracking_allocator_init(&tracking_temp_allocator, context.temp_allocator)
-    defer mem.tracking_allocator_destroy(&tracking_temp_allocator)
-    defer print_tracking_allocator_results(&tracking_temp_allocator, "temp")
-    context.temp_allocator = mem.tracking_allocator(&tracking_temp_allocator)
+    when TRACKING_ALLOCATOR {
+        tracking_allocator: mem.Tracking_Allocator
+        mem.tracking_allocator_init(&tracking_allocator, context.allocator)
+        context.allocator = mem.tracking_allocator(&tracking_allocator)
+        defer mem.tracking_allocator_destroy(&tracking_allocator)
+        defer print_tracking_allocator_results(&tracking_allocator, "main")
+
+        tracking_temp_allocator: mem.Tracking_Allocator
+        mem.tracking_allocator_init(&tracking_temp_allocator, context.temp_allocator)
+        context.temp_allocator = mem.tracking_allocator(&tracking_temp_allocator)
+        defer mem.tracking_allocator_destroy(&tracking_temp_allocator)
+        defer print_tracking_allocator_results(&tracking_temp_allocator, "temp")
+    }
+
     defer free_all(context.temp_allocator)
+
+    when SPALL {
+        spall_ctx = spall.context_create("trace_test.spall")
+        defer spall.context_destroy(&spall_ctx)
+        buffer_backing := make([]u8, spall.BUFFER_DEFAULT_SIZE)
+        defer delete(buffer_backing)
+        spall_buffer = spall.buffer_create(buffer_backing, u32(sync.current_thread_id()))
+        defer spall.buffer_destroy(&spall_ctx, &spall_buffer)
+    }
+
+    trace("Main")
 
     context.logger = log.create_console_logger(.Info, log.Default_Console_Logger_Opts, "Audio Analyzer")
     defer free(context.logger.data)
@@ -49,20 +70,10 @@ main :: proc() {
     }
 
     {
-        frame_arena: mem.Dynamic_Arena
-        mem.dynamic_arena_init(&frame_arena, block_size = 1024 * 1024)
-        frame_allocator := mem.dynamic_arena_allocator(&frame_arena)
-        defer mem.dynamic_arena_destroy(&frame_arena)
-        context.temp_allocator = frame_allocator
-
-        tracking_temp_allocator: mem.Tracking_Allocator
-        mem.tracking_allocator_init(&tracking_temp_allocator, context.temp_allocator)
-        defer mem.tracking_allocator_destroy(&tracking_temp_allocator)
-        context.temp_allocator = mem.tracking_allocator(&tracking_temp_allocator)
+        trace("Processing files")
 
         for file in files {
-            read_file(file) // TODO: Return some struct with data or something, maybe represent channel data as an array of structs wrapping an array (channel) with specified alignment?
-            free_all(frame_allocator)
+            process_file(file)
         }
     }
 }

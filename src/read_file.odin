@@ -20,10 +20,14 @@ Read_File_Error :: enum {
     Invalid_RIFF_Header,
     Cant_Find_FMT_Chunk,
     Cant_Find_DATA_Chunk,
-    Empty_Data_Chunk,
+    Empty_DATA_Chunk,
+    Invalid_DATA_Chunk_Size,
+    Memory_Allocation_Failed,
 }
 
 read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
+    trace("Read File")
+
     Wave_Chunk_Header :: struct #packed {
         marker: [4]byte,
         size:   u32,
@@ -72,7 +76,6 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
 
     WAVE_MIN_FILE_SIZE :: size_of(Wave_RIFF_Chunk) + size_of(Wave_FMT_Subchunk_Basic) + size_of(Wave_Chunk_Header)
 
-    // TODO: Process error https://github.com/pbremondFR/scop/blob/c7af2d6ecc4436d3e5a957b0bd78ba78543abe26/src/textures.odin#L62
     fd, open_error := os.open(file.fullpath, os.O_RDONLY)
     if open_error != nil {
         return nil, .Cant_Open_File
@@ -94,7 +97,7 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     }
     defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
 
-    get_next_subchunk_with_marker :: proc "contextless" (data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^int) -> (subchunk_data: ^T, subchunk_found: bool) {
+    get_next_subchunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^int) -> (subchunk_data: ^T, subchunk_found: bool) {
         previous_chunk_size: u32
         if string(previous_chunk_header.marker[:]) == "RIFF" {
             previous_chunk_size = 4
@@ -150,13 +153,37 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     }
 
     if (data_chunk_header^.size == 0) {
-        return nil, .Empty_Data_Chunk
+        return nil, .Empty_DATA_Chunk
     }
 
-    current_offset += int(data_chunk_header.size) // Actual data
+    current_offset += size_of(Wave_Chunk_Header) // Actual data start
+
+    if (current_offset + int(data_chunk_header.size) > int(file_size)) {
+        return nil, .Invalid_DATA_Chunk_Size
+    }
+
+    if (int(data_chunk_header.size) % int(fmt_chunk.block_align) != 0) {
+        return nil, .Invalid_DATA_Chunk_Size
+    }
 
     fmt.println(data_chunk_header^)
-    fmt.println()
 
+    deinterleaved_data_size := uint(data_chunk_header.size) / uint(fmt_chunk.bits_per_sample) * 32
+    fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
+
+    // Maybe memory block per channel? Or make sure to align every channel individually.
+    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size, 64)
+    if deinterleaved_data_memory_block_error != nil {
+        return nil, .Memory_Allocation_Failed
+    }
+    mem.zero_slice(deinterleaved_data_memory_block.base[:deinterleaved_data_memory_block.committed])
+    defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
+
+    fmt.println(deinterleaved_data_memory_block)
+    
+    deinterleaved_data_memory_block.used = deinterleaved_data_size
+    mem.zero_slice(deinterleaved_data_memory_block.base[deinterleaved_data_memory_block.used:deinterleaved_data_memory_block.committed])
+
+    fmt.println()
     return nil, .None
 }

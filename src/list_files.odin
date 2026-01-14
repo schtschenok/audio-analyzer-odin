@@ -18,6 +18,8 @@ List_Files_Error :: enum {
 }
 
 list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Error {
+    trace("List Files")
+
     root_handle, root_open_error := os.open(opt.folder)
 
     if (root_open_error != 0) {
@@ -121,8 +123,12 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
         return .No_Wav_Files_In_Root_Dir
     }
 
-    // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(a.size - b.size) }) // Ascending
-    // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(b.size - a.size) })     // Descending
+    {
+        trace("Sort")
+
+        sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(a.size - b.size) })     // Ascending
+        // sort.quick_sort_proc(files[:], proc(a, b: os.File_Info) -> int { return int(b.size - a.size) })     // Descending
+    }
 
     return .None
 }

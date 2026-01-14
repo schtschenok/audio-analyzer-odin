@@ -3,3 +3,4 @@ build
 
 *.raddbg_project
 *.raddbg_user
+*.spall

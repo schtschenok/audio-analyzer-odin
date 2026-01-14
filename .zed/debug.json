@@ -4,11 +4,11 @@
         "label": "Debug (Windows)",
         "request": "launch",
         "name": "Debug (Windows)",
-        "build": "Build Debug",
-        "program": "build/debug",
+        "build": "Build Debug (Windows)",
+        "program": "build\\debug.exe",
         "args": ["data"],
         "stopOnEntry": false,
-        "cwd": "$ZED_WORKTREE_ROOT",
+        "cwd": "$ZED_WORKTREE_ROOT"
     },
     {
         "adapter": "CodeLLDB",
@@ -19,6 +19,6 @@
         "program": "build/debug",
         "args": ["data"],
         "stopOnEntry": false,
-        "cwd": "$ZED_WORKTREE_ROOT",
-    },
+        "cwd": "$ZED_WORKTREE_ROOT"
+    }
 ]
