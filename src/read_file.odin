@@ -12,6 +12,22 @@ import "core:slice"
 import "core:sort"
 import "core:strings"
 
+MAX_CHANNEL_COUNT :: 16
+
+Int_Or_Float :: enum {
+    Int,
+    Float,
+}
+
+Prepared_File :: struct {
+    data:                [MAX_CHANNEL_COUNT]^virtual.Memory_Block,
+    channels:            int,
+    name:                string,
+    original_samplerate: int,
+    original_bit_depth:  int,
+    original_format:     Int_Or_Float,
+}
+
 Read_File_Error :: enum {
     None,
     Cant_Open_File,
@@ -19,6 +35,8 @@ Read_File_Error :: enum {
     Cant_Map_File,
     Invalid_RIFF_Header,
     Cant_Find_FMT_Chunk,
+    Too_Many_Channels,
+    Invalid_FMT_Chunk,
     Cant_Find_DATA_Chunk,
     Empty_DATA_Chunk,
     Invalid_DATA_Chunk_Size,
@@ -141,8 +159,30 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
         return nil, .Cant_Find_FMT_Chunk
     }
 
+    if fmt_chunk.num_channels > MAX_CHANNEL_COUNT {
+        return nil, .Too_Many_Channels
+    }
+
     fmt.println(fmt_chunk^)
-    // TODO: Parse FMT chunk, check if it's basic or extended
+
+    prepared_file: Prepared_File
+
+    switch fmt_chunk.audio_format {
+    case .Int:
+        prepared_file.original_format = .Int
+    case .Float:
+        prepared_file.original_format = .Float
+    case .Extended:
+        if file_size < i64(current_offset) + i64(size_of(Wave_FMT_Subchunk_Extended)) {     // TODO: Figure out int types
+            return nil, .Invalid_FMT_Chunk
+        }
+        fmt_extended_chunk_in_file := (^Wave_FMT_Subchunk_Extended)(fmt_chunk_in_file)
+        fmt_extended_chunk: ^Wave_FMT_Subchunk_Extended = new(Wave_FMT_Subchunk_Extended, allocator = context.temp_allocator)
+        mem.copy(fmt_extended_chunk, fmt_extended_chunk_in_file, size_of(Wave_FMT_Subchunk_Extended))
+        fmt.println(fmt_extended_chunk)
+        
+        // TODO: Continue from here!
+    }
 
     data_chunk_header_in_file, data_chunk_found := get_next_subchunk_with_marker(raw_file_bytes, &fmt_chunk.chunk_header, "data", Wave_Chunk_Header, &current_offset)
     data_chunk_header: ^Wave_Chunk_Header = new(Wave_Chunk_Header, allocator = context.temp_allocator)
@@ -180,7 +220,7 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
 
     fmt.println(deinterleaved_data_memory_block)
-    
+
     deinterleaved_data_memory_block.used = deinterleaved_data_size
     mem.zero_slice(deinterleaved_data_memory_block.base[deinterleaved_data_memory_block.used:deinterleaved_data_memory_block.committed])
 

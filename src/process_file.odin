@@ -37,9 +37,11 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
         delete(frame_arena_data)
     }
 
+    default_allocator := context.allocator
     context.allocator = mem.panic_allocator()
 
     read_file(file) // TODO: Return some struct with data or something, maybe represent channel data as an array of structs wrapping an array (channel) with specified alignment?
 
+    context.allocator = default_allocator
     return nil, Process_File_Error.None
 }
