@@ -20,12 +20,13 @@ Int_Or_Float :: enum {
 }
 
 Prepared_File :: struct {
-    data:                [MAX_CHANNEL_COUNT]^virtual.Memory_Block,
-    channels:            int,
+    data:                virtual.Memory_Block,
+    channels:            i64,
     name:                string,
-    original_samplerate: int,
-    original_bit_depth:  int,
+    original_samplerate: i64,
+    original_bit_depth:  i64,
     original_format:     Int_Or_Float,
+    original_data_size:  i64,
 }
 
 Read_File_Error :: enum {
@@ -37,13 +38,15 @@ Read_File_Error :: enum {
     Cant_Find_FMT_Chunk,
     Too_Many_Channels,
     Invalid_FMT_Chunk,
+    Valid_Bits_Per_Sample_Dont_Match_Bits_Per_Sample,
+    Unsupported_Format,
     Cant_Find_DATA_Chunk,
     Empty_DATA_Chunk,
     Invalid_DATA_Chunk_Size,
     Memory_Allocation_Failed,
 }
 
-read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
+read_file :: proc(file: os.File_Info) -> (Prepared_File, Read_File_Error) {
     trace("Read File")
 
     Wave_Chunk_Header :: struct #packed {
@@ -96,36 +99,36 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
 
     fd, open_error := os.open(file.fullpath, os.O_RDONLY)
     if open_error != nil {
-        return nil, .Cant_Open_File
+        return Prepared_File{}, .Cant_Open_File
     }
     defer os.close(fd)
 
     file_size, size_error := os.file_size(fd)
     if size_error != nil {
-        return nil, .Cant_Open_File
+        return Prepared_File{}, .Cant_Open_File
     }
 
     if file_size <= WAVE_MIN_FILE_SIZE {
-        return nil, .File_Too_Small
+        return Prepared_File{}, .File_Too_Small
     }
 
     raw_file_bytes, map_error := virtual.map_file_from_file_descriptor(uintptr(fd), {.Read})
     if map_error != nil {
-        return nil, .Cant_Map_File
+        return Prepared_File{}, .Cant_Map_File
     }
     defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
 
-    get_next_subchunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^int) -> (subchunk_data: ^T, subchunk_found: bool) {
-        previous_chunk_size: u32
+    get_next_subchunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^i64) -> (subchunk_data: ^T, subchunk_found: bool) {
+        previous_chunk_size: i64
         if string(previous_chunk_header.marker[:]) == "RIFF" {
             previous_chunk_size = 4
         } else {
-            previous_chunk_size = previous_chunk_header.size
+            previous_chunk_size = i64(previous_chunk_header.size)
         }
         for {
-            current_offset^ = current_offset^ + size_of(Wave_Chunk_Header) + int(previous_chunk_size)
+            current_offset^ = current_offset^ + size_of(Wave_Chunk_Header) + previous_chunk_size
 
-            if len(data) < current_offset^ + size_of(T) {
+            if i64(len(data)) < current_offset^ + size_of(T) {
                 return nil, false
             }
             if string(marker[:]) == string(data[current_offset^:current_offset^ + 4]) {
@@ -140,15 +143,15 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
         return (^T)(raw_data(data[current_offset^:])), true
     }
 
-    current_offset: int = 0
+    current_offset: i64 = 0
     riff_header_in_file := (^Wave_RIFF_Chunk)(raw_data(raw_file_bytes))
 
     if (file_size < i64(riff_header_in_file.chunk_header.size) + size_of(Wave_Chunk_Header)) {
-        return nil, .Invalid_RIFF_Header
+        return Prepared_File{}, .Invalid_RIFF_Header
     }
 
     if string(riff_header_in_file.chunk_header.marker[:]) != "RIFF" || string(riff_header_in_file.format[:]) != "WAVE" {
-        return nil, .Invalid_RIFF_Header
+        return Prepared_File{}, .Invalid_RIFF_Header
     }
 
     fmt_chunk_in_file, fmt_chunk_found := get_next_subchunk_with_marker(raw_file_bytes, &riff_header_in_file.chunk_header, "fmt ", Wave_FMT_Subchunk_Basic, &current_offset)
@@ -156,11 +159,11 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     mem.copy(fmt_chunk, fmt_chunk_in_file, size_of(Wave_FMT_Subchunk_Basic))
 
     if !fmt_chunk_found {
-        return nil, .Cant_Find_FMT_Chunk
+        return Prepared_File{}, .Cant_Find_FMT_Chunk
     }
 
     if fmt_chunk.num_channels > MAX_CHANNEL_COUNT {
-        return nil, .Too_Many_Channels
+        return Prepared_File{}, .Too_Many_Channels
     }
 
     fmt.println(fmt_chunk^)
@@ -173,40 +176,58 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     case .Float:
         prepared_file.original_format = .Float
     case .Extended:
-        if file_size < i64(current_offset) + i64(size_of(Wave_FMT_Subchunk_Extended)) {     // TODO: Figure out int types
-            return nil, .Invalid_FMT_Chunk
+        if file_size < current_offset + i64(size_of(Wave_FMT_Subchunk_Extended)) {
+            return Prepared_File{}, .Invalid_FMT_Chunk
         }
         fmt_extended_chunk_in_file := (^Wave_FMT_Subchunk_Extended)(fmt_chunk_in_file)
         fmt_extended_chunk: ^Wave_FMT_Subchunk_Extended = new(Wave_FMT_Subchunk_Extended, allocator = context.temp_allocator)
         mem.copy(fmt_extended_chunk, fmt_extended_chunk_in_file, size_of(Wave_FMT_Subchunk_Extended))
-        fmt.println(fmt_extended_chunk)
-        
-        // TODO: Continue from here!
+
+        if fmt_extended_chunk.valid_bits_per_sample != fmt_chunk.bits_per_sample {
+            return Prepared_File{}, .Valid_Bits_Per_Sample_Dont_Match_Bits_Per_Sample // Maybe I'll support this in the future?
+        }
+
+        switch fmt_extended_chunk.sub_format.audio_format {
+        case .Int:
+            prepared_file.original_format = .Int
+        case .Float:
+            prepared_file.original_format = .Float
+        case:
+            return Prepared_File{}, .Unsupported_Format
+        }
+    case:
+        return Prepared_File{}, .Unsupported_Format
     }
+
+    prepared_file.channels = i64(fmt_chunk.num_channels)
+    prepared_file.original_bit_depth = i64(fmt_chunk.bits_per_sample)
+    prepared_file.original_samplerate = i64(fmt_chunk.sample_rate)
 
     data_chunk_header_in_file, data_chunk_found := get_next_subchunk_with_marker(raw_file_bytes, &fmt_chunk.chunk_header, "data", Wave_Chunk_Header, &current_offset)
     data_chunk_header: ^Wave_Chunk_Header = new(Wave_Chunk_Header, allocator = context.temp_allocator)
     mem.copy(data_chunk_header, data_chunk_header_in_file, size_of(Wave_Chunk_Header))
 
     if !data_chunk_found {
-        return nil, .Cant_Find_DATA_Chunk
+        return Prepared_File{}, .Cant_Find_DATA_Chunk
     }
 
     if (data_chunk_header^.size == 0) {
-        return nil, .Empty_DATA_Chunk
+        return Prepared_File{}, .Empty_DATA_Chunk
     }
 
     current_offset += size_of(Wave_Chunk_Header) // Actual data start
 
-    if (current_offset + int(data_chunk_header.size) > int(file_size)) {
-        return nil, .Invalid_DATA_Chunk_Size
+    if (current_offset + i64(data_chunk_header.size) > file_size) {
+        return Prepared_File{}, .Invalid_DATA_Chunk_Size
     }
 
     if (int(data_chunk_header.size) % int(fmt_chunk.block_align) != 0) {
-        return nil, .Invalid_DATA_Chunk_Size
+        return Prepared_File{}, .Invalid_DATA_Chunk_Size
     }
 
     fmt.println(data_chunk_header^)
+
+    prepared_file.original_data_size = i64(data_chunk_header.size)
 
     deinterleaved_data_size := uint(data_chunk_header.size) / uint(fmt_chunk.bits_per_sample) * 32
     fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
@@ -214,7 +235,7 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     // Maybe memory block per channel? Or make sure to align every channel individually.
     deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size, 64)
     if deinterleaved_data_memory_block_error != nil {
-        return nil, .Memory_Allocation_Failed
+        return Prepared_File{}, .Memory_Allocation_Failed
     }
     mem.zero_slice(deinterleaved_data_memory_block.base[:deinterleaved_data_memory_block.committed])
     defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
@@ -225,5 +246,5 @@ read_file :: proc(file: os.File_Info) -> ([][]f32, Read_File_Error) {
     mem.zero_slice(deinterleaved_data_memory_block.base[deinterleaved_data_memory_block.used:deinterleaved_data_memory_block.committed])
 
     fmt.println()
-    return nil, .None
+    return Prepared_File{}, .None
 }

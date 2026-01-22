@@ -10,6 +10,7 @@ import "core:prof/spall"
 import "core:sort"
 import "core:strings"
 import "core:sync"
+import "core:time"
 
 // TODO: Add timers and processed byte counters
 
@@ -18,6 +19,10 @@ Options :: struct {
 }
 
 main :: proc() {
+    when PERF {
+        perf.start_time = time.tick_now()
+    }
+
     temp_allocator: mem.Dynamic_Arena
     mem.dynamic_arena_init(&temp_allocator, block_size = 1024 * 1024 * 16)
     context.temp_allocator = mem.dynamic_arena_allocator(&temp_allocator)
@@ -72,8 +77,31 @@ main :: proc() {
     {
         trace("Processing files")
 
-        for file in files {
-            process_file(file)
+        when PERF {
+            perf.main_loop_start_time = time.tick_now()
         }
+
+        for file in files {
+            _, process_file_error := process_file(file)
+            if process_file_error != .None {
+                when PERF {
+                    perf.files_failed = perf.files_failed + 1
+                }
+            } else {
+                when PERF {
+                    perf.files_processed = perf.files_processed + 1
+                }
+            }
+        }
+    }
+
+    when PERF {
+        perf.end_time = time.tick_now()
+
+        spool_up_time := time.tick_diff(perf.start_time, perf.main_loop_start_time)
+        loop_time := time.tick_diff(perf.main_loop_start_time, perf.end_time)
+        megabyes_processed := perf.bytes_processed / 1024 / 1024
+
+        fmt.println(perf)
     }
 }

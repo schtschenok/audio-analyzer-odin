@@ -7,6 +7,7 @@ import "core:os"
 Process_File_Error :: enum {
     None,
     AllocationError,
+    Cant_Read_File,
 }
 
 process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
@@ -40,7 +41,16 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
     default_allocator := context.allocator
     context.allocator = mem.panic_allocator()
 
-    read_file(file) // TODO: Return some struct with data or something, maybe represent channel data as an array of structs wrapping an array (channel) with specified alignment?
+    prepared_file, read_file_error := read_file(file)
+
+    if read_file_error != .None {
+        panic("Wtf?")
+    } else {
+        // TODO: TEMPORARY, also this doesn't work btw
+        when PERF {
+            perf.bytes_processed = perf.bytes_processed + u64(prepared_file.original_data_size)
+        }
+    }
 
     context.allocator = default_allocator
     return nil, Process_File_Error.None
