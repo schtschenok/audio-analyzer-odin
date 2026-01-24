@@ -3,6 +3,8 @@ package main
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
+import "core:fmt"
+import "core:reflect"
 
 Process_File_Error :: enum {
     None,
@@ -44,13 +46,12 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
     prepared_file, read_file_error := read_file(file)
 
     if read_file_error != .None {
-        panic("Wtf?")
+        fmt.printfln("File: %s, error: %s", file.fullpath, reflect.enum_string(read_file_error))
+        return nil, .Cant_Read_File
     } else {
-        // TODO: TEMPORARY, also this doesn't work btw
         perf.bytes_processed = perf.bytes_processed + u64(prepared_file.original_data_size)
-
     }
 
     context.allocator = default_allocator
-    return nil, Process_File_Error.None
+    return nil, .None
 }

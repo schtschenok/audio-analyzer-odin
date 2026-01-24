@@ -21,7 +21,6 @@ Options :: struct {
 main :: proc() {
     perf.start_time = time.tick_now()
 
-
     temp_allocator: mem.Dynamic_Arena
     mem.dynamic_arena_init(&temp_allocator, block_size = 1024 * 1024 * 16)
     context.temp_allocator = mem.dynamic_arena_allocator(&temp_allocator)
