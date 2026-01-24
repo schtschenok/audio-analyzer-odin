@@ -8,7 +8,6 @@ import "core:time"
 
 TRACKING_ALLOCATOR :: #config(TRACKING_ALLOCATOR, false)
 SPALL :: #config(SPALL, false)
-PERF :: #config(PERF, false)
 
 when TRACKING_ALLOCATOR {
     print_tracking_allocator_results :: proc(allocator: ^mem.Tracking_Allocator, name: string) {
@@ -55,15 +54,13 @@ when SPALL {
     trace :: proc "contextless" (name: string) {  }
 }
 
-when PERF {
-    Perf :: struct {
-        start_time:           time.Tick,
-        main_loop_start_time: time.Tick,
-        end_time:             time.Tick,
-        files_processed:      u64,
-        files_failed:         u64,
-        bytes_processed:      u64,
-    }
-
-    perf: Perf
+Perf :: struct {
+    start_time:           time.Tick,
+    main_loop_start_time: time.Tick,
+    end_time:             time.Tick,
+    files_processed:      u64,
+    files_failed:         u64,
+    bytes_processed:      u64,
 }
+
+perf: Perf

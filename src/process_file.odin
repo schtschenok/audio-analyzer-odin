@@ -47,9 +47,8 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
         panic("Wtf?")
     } else {
         // TODO: TEMPORARY, also this doesn't work btw
-        when PERF {
-            perf.bytes_processed = perf.bytes_processed + u64(prepared_file.original_data_size)
-        }
+        perf.bytes_processed = perf.bytes_processed + u64(prepared_file.original_data_size)
+
     }
 
     context.allocator = default_allocator

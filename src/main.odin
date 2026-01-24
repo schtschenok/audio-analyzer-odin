@@ -19,9 +19,8 @@ Options :: struct {
 }
 
 main :: proc() {
-    when PERF {
-        perf.start_time = time.tick_now()
-    }
+    perf.start_time = time.tick_now()
+
 
     temp_allocator: mem.Dynamic_Arena
     mem.dynamic_arena_init(&temp_allocator, block_size = 1024 * 1024 * 16)
@@ -77,31 +76,33 @@ main :: proc() {
     {
         trace("Processing files")
 
-        when PERF {
-            perf.main_loop_start_time = time.tick_now()
-        }
+        perf.main_loop_start_time = time.tick_now()
+
 
         for file in files {
             _, process_file_error := process_file(file)
             if process_file_error != .None {
-                when PERF {
-                    perf.files_failed = perf.files_failed + 1
-                }
+                perf.files_failed = perf.files_failed + 1
+
             } else {
-                when PERF {
-                    perf.files_processed = perf.files_processed + 1
-                }
+                perf.files_processed = perf.files_processed + 1
+
             }
         }
     }
 
-    when PERF {
-        perf.end_time = time.tick_now()
+    perf.end_time = time.tick_now()
 
-        spool_up_time := time.tick_diff(perf.start_time, perf.main_loop_start_time)
-        loop_time := time.tick_diff(perf.main_loop_start_time, perf.end_time)
-        megabyes_processed := perf.bytes_processed / 1024 / 1024
-
-        fmt.println(perf)
-    }
+    spool_up_time := time.duration_seconds(time.tick_diff(perf.start_time, perf.main_loop_start_time))
+    loop_time := time.duration_seconds(time.tick_diff(perf.main_loop_start_time, perf.end_time))
+    total_time := spool_up_time + loop_time
+    per_file_time := loop_time / f64(perf.files_processed)
+    megabyes_processed := perf.bytes_processed / 1024 / 1024
+    fmt.printfln("Spool-up time: %fs", spool_up_time)
+    fmt.printfln("Total loop time: %fs", loop_time)
+    fmt.printfln("Total time: %fs", total_time)
+    fmt.printfln("Per-file time: %fs", per_file_time)
+    fmt.printfln("Files processed: %d", perf.files_processed)
+    fmt.printfln("Files failed: %d", perf.files_failed)
+    fmt.printfln("Speed: %f MB/s", f64(megabyes_processed) / loop_time)
 }

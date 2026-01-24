@@ -1,7 +1,7 @@
 [
     {
         "label": "RAD Debug (Windows)",
-        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:PERF=true -debug -o:none -warnings-as-errors -out:build\\debug.exe && raddbg --project:audio-analyzer.raddbg_project --auto_run build\\debug.exe data",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -debug -o:none -warnings-as-errors -out:build\\debug.exe && raddbg --project:audio-analyzer.raddbg_project --auto_run build\\debug.exe data",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "never",
@@ -13,7 +13,7 @@
     },
     {
         "label": "Build Debug (Windows)",
-        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:PERF=true -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build\\debug.exe",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build\\debug.exe",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
@@ -25,7 +25,7 @@
     },
     {
         "label": "Run Debug (Windows)",
-        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:PERF=true -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build\\debug.exe && build\\debug.exe data",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build\\debug.exe && build\\debug.exe data",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
@@ -37,7 +37,7 @@
     },
     {
         "label": "Build Release (Windows)",
-        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:PERF=true -define:SPALL=true -debug -o:speed -out:build\\release.exe",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:SPALL=true -debug -o:speed -out:build\\release.exe",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
@@ -49,7 +49,7 @@
     },
     {
         "label": "Run Release (Windows)",
-        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:PERF=true -define:SPALL=true -debug -o:speed -out:build\\release.exe && build\\release.exe data",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -define:SPALL=true -debug -o:speed -out:build\\release.exe && build\\release.exe data",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
@@ -61,7 +61,7 @@
     },
     {
         "label": "Build Debug (Linux)",
-        "command": "mkdir -p build && odin build src -define:PERF=true -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build/debug",
+        "command": "mkdir -p build && odin build src -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build/debug",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
@@ -70,11 +70,20 @@
     },
     {
         "label": "Build Release (Linux)",
-        "command": "mkdir -p build && odin build src -define:PERF=true -define:SPALL=true -debug -o:speed -out:build/release",
+        "command": "mkdir -p build && odin build src -define:SPALL=true -debug -o:speed -out:build/release",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
         "hide": "never",
         "show_summary": true
+    },
+    {
+        "label": "Run Release (Linux)",
+        "command": "mkdir -p build && odin build src -define:SPALL=true -debug -o:speed -out:build/release && build/release data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": false
     }
 ]

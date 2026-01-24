@@ -229,11 +229,15 @@ read_file :: proc(file: os.File_Info) -> (Prepared_File, Read_File_Error) {
 
     prepared_file.original_data_size = i64(data_chunk_header.size)
 
-    deinterleaved_data_size := uint(data_chunk_header.size) / uint(fmt_chunk.bits_per_sample) * 32
+    deinterleaved_channel_data_size := int(data_chunk_header.size) / int(prepared_file.original_bit_depth) * 32 / int(prepared_file.channels)
+    deinterleaved_channel_data_size_aligned := mem.align_formula(deinterleaved_channel_data_size, 64)
+    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * int(prepared_file.channels))
+    assert(int(deinterleaved_data_size) == mem.align_formula(int(deinterleaved_data_size), 64))
     fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
+    
+    // TODO: Represent channels somehow? Change the struct to only hold a single memory block and then represent the channels as slices or whatever?
 
-    // Maybe memory block per channel? Or make sure to align every channel individually.
-    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size, 64)
+    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size)
     if deinterleaved_data_memory_block_error != nil {
         return Prepared_File{}, .Memory_Allocation_Failed
     }
@@ -246,5 +250,6 @@ read_file :: proc(file: os.File_Info) -> (Prepared_File, Read_File_Error) {
     mem.zero_slice(deinterleaved_data_memory_block.base[deinterleaved_data_memory_block.used:deinterleaved_data_memory_block.committed])
 
     fmt.println()
-    return Prepared_File{}, .None
+
+    return prepared_file, .None
 }
