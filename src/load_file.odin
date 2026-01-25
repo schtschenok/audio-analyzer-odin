@@ -33,24 +33,24 @@ Load_File_Error :: enum {
     File_Too_Small_To_Be_Valid,
     File_Map_Error,
     File_Early_EOF,
-    RIFF_RIFX_Unsupported,
-    RIFF_RF64_Unsupported,
-    RIFF_BW64_Unsupported,
-    RIFF_Invalid_Header,
-    RIFF_Invalid_Size,
-    FMT_Not_Found,
-    FMT_Invalid_Bit_Depth,
-    FMT_Unsupported_Bit_Depth,
-    FMT_Invalid_Channel_Count,
-    FMT_Invalid_Samplerate,
-    FMT_Invalid_Block_Align,
-    FMT_Extended_Invalid_Extra_Param_Size,
-    FMT_Extended_Unsupported_Extra_Param_Size,
-    FMT_Extended_Unsupported_Valid_Bits_Per_Sample,
-    FMT_Unsupported_Format,
-    DATA_Not_Found,
-    DATA_Empty,
-    DATA_Invalid_Size,
+    RIFF_Chunk_RIFX_Unsupported,
+    RIFF_Chunk_RF64_Unsupported,
+    RIFF_Chunk_BW64_Unsupported,
+    RIFF_Chunk_Invalid_Header,
+    RIFF_Chunk_Invalid_Size,
+    FMT_Chunk_Not_Found,
+    FMT_Chunk_Invalid_Bit_Depth,
+    FMT_Chunk_Unsupported_Bit_Depth,
+    FMT_Chunk_Invalid_Channel_Count,
+    FMT_Chunk_Invalid_Samplerate,
+    FMT_Chunk_Invalid_Block_Align,
+    FMT_Chunk_Unsupported_Format,
+    FMT_Extended_Chunk_Invalid_Extra_Param_Size,
+    FMT_Extended_Chunk_Unsupported_Extra_Param_Size,
+    FMT_Extended_Chunk_Unsupported_Valid_Bits_Per_Sample,
+    DATA_Chunk_Not_Found,
+    DATA_Chunk_Empty,
+    DATA_Chunk_Invalid_Size,
     Memory_Allocation_Failed,
 }
 
@@ -73,7 +73,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         Extended = 65534,
     }
 
-    Wave_FMT_Subchunk_Basic :: struct #packed {
+    Wave_FMT_Chunk :: struct #packed {
         chunk_header:    Wave_Chunk_Header,
         audio_format:    Wave_Format_Type,
         num_channels:    u16,
@@ -83,8 +83,8 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         bits_per_sample: u16,
     }
 
-    Wave_FMT_Subchunk_Extended :: struct #packed {
-        basic_chunk:           Wave_FMT_Subchunk_Basic,
+    Wave_FMT_Extended_Chunk :: struct #packed {
+        basic_chunk:           Wave_FMT_Chunk,
         extra_param_size:      u16,
         valid_bits_per_sample: u16,
         channel_mask:          u32,
@@ -103,7 +103,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         data_4:       [8]byte,
     }
 
-    WAVE_MIN_FILE_SIZE :: size_of(Wave_RIFF_Chunk) + size_of(Wave_FMT_Subchunk_Basic) + size_of(Wave_Chunk_Header)
+    WAVE_MIN_FILE_SIZE :: size_of(Wave_RIFF_Chunk) + size_of(Wave_FMT_Chunk) + size_of(Wave_Chunk_Header)
 
     fd, open_error := os.open(file.fullpath, os.O_RDONLY)
     if open_error != nil {
@@ -126,9 +126,9 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     }
     defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
 
-    get_next_subchunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^i64) -> (subchunk_data: ^T, subchunk_found: bool) {
+    get_next_chunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^i64) -> (chunk_data: ^T, chunk_found: bool) {
         previous_chunk_size: u32
-        if string(previous_chunk_header.marker[:]) == "RIFF" {     // Don't forget to update this if I ever support RF64 & BW64
+        if string(previous_chunk_header.marker[:]) == "RIFF" {
             previous_chunk_size = 4
         } else {
             previous_chunk_size = previous_chunk_header.size
@@ -156,19 +156,19 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     riff_header_in_file := (^Wave_RIFF_Chunk)(raw_data(raw_file_bytes))
 
     switch string(riff_header_in_file.chunk_header.marker[:]) {
-    // Maybe support all this stuff?
+    // Maybe support all this stuff? Don't forget to update get_next_chunk_with_marker() if I ever do.
     case "RIFX":
-        return Loaded_File{}, .RIFF_RIFX_Unsupported
+        return Loaded_File{}, .RIFF_Chunk_RIFX_Unsupported
     case "RF64":
-        return Loaded_File{}, .RIFF_RF64_Unsupported
+        return Loaded_File{}, .RIFF_Chunk_RF64_Unsupported
     case "BW64":
-        return Loaded_File{}, .RIFF_BW64_Unsupported
+        return Loaded_File{}, .RIFF_Chunk_BW64_Unsupported
     case "RIFF":
         if string(riff_header_in_file.format[:]) != "WAVE" {
-            return Loaded_File{}, .RIFF_Invalid_Header
+            return Loaded_File{}, .RIFF_Chunk_Invalid_Header
         }
     case:
-        return Loaded_File{}, .RIFF_Invalid_Header
+        return Loaded_File{}, .RIFF_Chunk_Invalid_Header
     }
 
     if file_size < i64(riff_header_in_file.chunk_header.size) {
@@ -176,15 +176,15 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     }
 
     if strict && file_size < size_of(Wave_Chunk_Header) + i64(riff_header_in_file.chunk_header.size) {
-        return Loaded_File{}, .RIFF_Invalid_Size
+        return Loaded_File{}, .RIFF_Chunk_Invalid_Size
     }
 
-    fmt_chunk_in_file, fmt_chunk_found := get_next_subchunk_with_marker(raw_file_bytes, &riff_header_in_file.chunk_header, "fmt ", Wave_FMT_Subchunk_Basic, &current_offset)
-    fmt_chunk: ^Wave_FMT_Subchunk_Basic = new(Wave_FMT_Subchunk_Basic, allocator = context.temp_allocator)
-    mem.copy(fmt_chunk, fmt_chunk_in_file, size_of(Wave_FMT_Subchunk_Basic))
+    fmt_chunk_in_file, fmt_chunk_found := get_next_chunk_with_marker(raw_file_bytes, &riff_header_in_file.chunk_header, "fmt ", Wave_FMT_Chunk, &current_offset)
+    fmt_chunk: ^Wave_FMT_Chunk = new(Wave_FMT_Chunk, allocator = context.temp_allocator)
+    mem.copy(fmt_chunk, fmt_chunk_in_file, size_of(Wave_FMT_Chunk))
 
     if !fmt_chunk_found {
-        return Loaded_File{}, .FMT_Not_Found
+        return Loaded_File{}, .FMT_Chunk_Not_Found
     }
 
     // fmt.println(fmt_chunk^)
@@ -192,7 +192,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     prepared_file: Loaded_File
 
     if fmt_chunk.num_channels == 0 {
-        return Loaded_File{}, .FMT_Invalid_Channel_Count
+        return Loaded_File{}, .FMT_Chunk_Invalid_Channel_Count
     }
     prepared_file.channels = i64(fmt_chunk.num_channels)
 
@@ -200,44 +200,45 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     case 16, 24, 32, 64:
         prepared_file.original_bit_depth = i64(fmt_chunk.bits_per_sample)
     case 0:
-        return Loaded_File{}, .FMT_Invalid_Bit_Depth
+        return Loaded_File{}, .FMT_Chunk_Invalid_Bit_Depth
     case:
-        return Loaded_File{}, .FMT_Unsupported_Bit_Depth
+        return Loaded_File{}, .FMT_Chunk_Unsupported_Bit_Depth
     }
 
     if fmt_chunk.sample_rate == 0 {
-        return Loaded_File{}, .FMT_Invalid_Samplerate
+        return Loaded_File{}, .FMT_Chunk_Invalid_Samplerate
     }
     prepared_file.original_samplerate = i64(fmt_chunk.sample_rate)
 
     if fmt_chunk.block_align != fmt_chunk.num_channels * fmt_chunk.bits_per_sample / 8 {
-        return Loaded_File{}, .FMT_Invalid_Block_Align
+        return Loaded_File{}, .FMT_Chunk_Invalid_Block_Align
     }
 
-    fmt_extended_chunk: ^Wave_FMT_Subchunk_Extended // Declare it here so I can see it in the debugger
+    fmt_extended_chunk: ^Wave_FMT_Extended_Chunk // Declare it here so I can see it in the debugger
     switch fmt_chunk.audio_format {
     case .Int:
         prepared_file.original_format = .Int
     case .Float:
         prepared_file.original_format = .Float
     case .Extended:
-        if file_size < current_offset + i64(size_of(Wave_FMT_Subchunk_Extended)) {
+        if file_size < current_offset + i64(size_of(Wave_FMT_Extended_Chunk)) {
             return Loaded_File{}, .File_Early_EOF
         }
-        fmt_extended_chunk_in_file := (^Wave_FMT_Subchunk_Extended)(fmt_chunk_in_file)
-        fmt_extended_chunk = new(Wave_FMT_Subchunk_Extended, allocator = context.temp_allocator)
-        mem.copy(fmt_extended_chunk, fmt_extended_chunk_in_file, size_of(Wave_FMT_Subchunk_Extended))
+        fmt_extended_chunk_in_file := (^Wave_FMT_Extended_Chunk)(fmt_chunk_in_file)
+        fmt_extended_chunk = new(Wave_FMT_Extended_Chunk, allocator = context.temp_allocator)
+        mem.copy(fmt_extended_chunk, fmt_extended_chunk_in_file, size_of(Wave_FMT_Extended_Chunk))
 
         if fmt_extended_chunk.extra_param_size < 22 {
-            return Loaded_File{}, .FMT_Extended_Invalid_Extra_Param_Size
-        }
-        
-        if fmt_extended_chunk.extra_param_size != 22 {
-            return Loaded_File{}, .FMT_Extended_Unsupported_Extra_Param_Size
+            return Loaded_File{}, .FMT_Extended_Chunk_Invalid_Extra_Param_Size
         }
 
-        if fmt_extended_chunk.valid_bits_per_sample != 0 && fmt_extended_chunk.valid_bits_per_sample != fmt_chunk.bits_per_sample {     // Maybe I'll support this in the future? I've never seen such cases in the wild though.
-            return Loaded_File{}, .FMT_Extended_Unsupported_Valid_Bits_Per_Sample
+        if fmt_extended_chunk.extra_param_size != 22 {
+            return Loaded_File{}, .FMT_Extended_Chunk_Unsupported_Extra_Param_Size
+        }
+
+        // Maybe I'll support this in the future? I've never seen such cases in the wild though.
+        if fmt_extended_chunk.valid_bits_per_sample != 0 && fmt_extended_chunk.valid_bits_per_sample != fmt_chunk.bits_per_sample {
+            return Loaded_File{}, .FMT_Extended_Chunk_Unsupported_Valid_Bits_Per_Sample
         }
 
         switch fmt_extended_chunk.sub_format.audio_format {
@@ -246,22 +247,22 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         case .Float:
             prepared_file.original_format = .Float
         case:
-            return Loaded_File{}, .FMT_Unsupported_Format
+            return Loaded_File{}, .FMT_Chunk_Unsupported_Format
         }
     case:
-        return Loaded_File{}, .FMT_Unsupported_Format
+        return Loaded_File{}, .FMT_Chunk_Unsupported_Format
     }
 
-    data_chunk_header_in_file, data_chunk_found := get_next_subchunk_with_marker(raw_file_bytes, &fmt_chunk.chunk_header, "data", Wave_Chunk_Header, &current_offset)
+    data_chunk_header_in_file, data_chunk_found := get_next_chunk_with_marker(raw_file_bytes, &fmt_chunk.chunk_header, "data", Wave_Chunk_Header, &current_offset)
     data_chunk_header: ^Wave_Chunk_Header = new(Wave_Chunk_Header, allocator = context.temp_allocator)
     mem.copy(data_chunk_header, data_chunk_header_in_file, size_of(Wave_Chunk_Header))
 
     if !data_chunk_found {
-        return Loaded_File{}, .DATA_Not_Found
+        return Loaded_File{}, .DATA_Chunk_Not_Found
     }
 
     if data_chunk_header^.size == 0 {
-        return Loaded_File{}, .DATA_Empty
+        return Loaded_File{}, .DATA_Chunk_Empty
     }
 
     current_offset += size_of(Wave_Chunk_Header) // Actual data start
@@ -271,12 +272,14 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     }
 
     if int(data_chunk_header.size) % int(fmt_chunk.block_align) != 0 {
-        return Loaded_File{}, .DATA_Invalid_Size
+        return Loaded_File{}, .DATA_Chunk_Invalid_Size
     }
 
     // fmt.println(data_chunk_header^)
 
     prepared_file.original_data_size = i64(data_chunk_header.size)
+
+    // WILD WEST STARTS HERE
 
     deinterleaved_channel_data_size := int(data_chunk_header.size) / int(prepared_file.original_bit_depth) * 32 / int(prepared_file.channels)
     deinterleaved_channel_data_size_aligned := mem.align_formula(deinterleaved_channel_data_size, 64)
