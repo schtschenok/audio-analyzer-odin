@@ -67,12 +67,6 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         format:       [4]byte,
     }
 
-    Wave_Format_Type :: enum u16 {
-        Int      = 1,
-        Float    = 3,
-        Extended = 65534,
-    }
-
     Wave_FMT_Chunk :: struct #packed {
         chunk_header:    Wave_Chunk_Header,
         audio_format:    Wave_Format_Type,
@@ -89,6 +83,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         valid_bits_per_sample: u16,
         channel_mask:          u32,
         sub_format:            Wave_Subformat_GUID,
+    }
+    
+    Wave_Format_Type :: enum u16 {
+        Int      = 1,
+        Float    = 3,
+        Extended = 65534,
     }
 
     Wave_Format_Type_In_Subformat_GUID :: enum u32 {
