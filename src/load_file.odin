@@ -44,8 +44,8 @@ Load_File_Error :: enum {
     FMT_Invalid_Channel_Count,
     FMT_Invalid_Samplerate,
     FMT_Invalid_Block_Align,
+    FMT_Extended_Invalid_Extra_Param_Size,
     FMT_Extended_Unsupported_Extra_Param_Size,
-    FMT_Extended_Invalid_Valid_Bits_Per_Sample,
     FMT_Extended_Unsupported_Valid_Bits_Per_Sample,
     FMT_Unsupported_Format,
     DATA_Not_Found,
@@ -228,12 +228,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         fmt_extended_chunk = new(Wave_FMT_Subchunk_Extended, allocator = context.temp_allocator)
         mem.copy(fmt_extended_chunk, fmt_extended_chunk_in_file, size_of(Wave_FMT_Subchunk_Extended))
 
+        if fmt_extended_chunk.extra_param_size < 22 {
+            return Loaded_File{}, .FMT_Extended_Invalid_Extra_Param_Size
+        }
+        
         if fmt_extended_chunk.extra_param_size != 22 {
             return Loaded_File{}, .FMT_Extended_Unsupported_Extra_Param_Size
-        }
-
-        if strict && fmt_extended_chunk.valid_bits_per_sample == 0 {
-            return Loaded_File{}, .FMT_Extended_Invalid_Valid_Bits_Per_Sample
         }
 
         if fmt_extended_chunk.valid_bits_per_sample != 0 && fmt_extended_chunk.valid_bits_per_sample != fmt_chunk.bits_per_sample {     // Maybe I'll support this in the future? I've never seen such cases in the wild though.
