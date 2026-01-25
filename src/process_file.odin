@@ -43,13 +43,13 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
     default_allocator := context.allocator
     context.allocator = mem.panic_allocator()
 
-    prepared_file, read_file_error := read_file(file)
+    prepared_file, read_file_error := load_file(file)
 
     if read_file_error != .None {
         fmt.printfln("File: %s, error: %s", file.fullpath, reflect.enum_string(read_file_error))
         return nil, .Cant_Read_File
     } else {
-        perf.bytes_processed = perf.bytes_processed + u64(prepared_file.original_data_size)
+        perf.bytes_processed += u64(prepared_file.original_data_size)
     }
 
     context.allocator = default_allocator

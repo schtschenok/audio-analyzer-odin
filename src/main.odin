@@ -12,8 +12,6 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 
-// TODO: Add timers and processed byte counters
-
 Options :: struct {
     folder: string `args:"pos=0,required" usage:"Input directory."`,
 }
@@ -81,11 +79,10 @@ main :: proc() {
         for file in files {
             _, process_file_error := process_file(file)
             if process_file_error != .None {
-                perf.files_failed = perf.files_failed + 1
+                perf.files_failed += 1
 
             } else {
-                perf.files_processed = perf.files_processed + 1
-
+                perf.files_processed += 1
             }
         }
     }
