@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:log"
 import "core:mem"
 import "core:os"
+import "core:path/slashpath"
 import "core:sort"
 import "core:strings"
 
@@ -100,6 +101,7 @@ list_files :: proc(opt: Options, files: ^[dynamic]os.File_Info) -> List_Files_Er
                 fullpath := strings.clone_from(entry.fullpath, allocator = context.allocator) // Allocates on  main allocator
                 valid_entry := entry
                 valid_entry.fullpath = fullpath
+                valid_entry.name = slashpath.base(fullpath, false) // Doesn't create a new string, uses the original one
                 append(files, valid_entry)
             }
         }

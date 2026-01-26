@@ -18,13 +18,14 @@ Int_Or_Float :: enum {
 }
 
 Loaded_File :: struct {
-    data:                virtual.Memory_Block,
-    channels:            i64,
-    name:                string,
-    original_samplerate: i64,
-    original_bit_depth:  i64,
+    memory_block:        virtual.Memory_Block,
+    channels:            u64,
+    channel_length:      u64,
+    original_path:       string,
+    original_samplerate: u64,
+    original_bit_depth:  u64,
     original_format:     Int_Or_Float,
-    original_data_size:  i64,
+    original_data_size:  u64,
 }
 
 Load_File_Error :: enum {
@@ -84,7 +85,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         channel_mask:          u32,
         sub_format:            Wave_Subformat_GUID,
     }
-    
+
     Wave_Format_Type :: enum u16 {
         Int      = 1,
         Float    = 3,
@@ -187,18 +188,18 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .FMT_Chunk_Not_Found
     }
 
-    // fmt.println(fmt_chunk^)
+    fmt.println(fmt_chunk^)
 
     prepared_file: Loaded_File
 
     if fmt_chunk.num_channels == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Channel_Count
     }
-    prepared_file.channels = i64(fmt_chunk.num_channels)
+    prepared_file.channels = u64(fmt_chunk.num_channels)
 
     switch fmt_chunk.bits_per_sample {
-    case 16, 24, 32, 64:
-        prepared_file.original_bit_depth = i64(fmt_chunk.bits_per_sample)
+    case 8, 16, 24, 32, 64:
+        prepared_file.original_bit_depth = u64(fmt_chunk.bits_per_sample)
     case 0:
         return Loaded_File{}, .FMT_Chunk_Invalid_Bit_Depth
     case:
@@ -208,7 +209,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     if fmt_chunk.sample_rate == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Samplerate
     }
-    prepared_file.original_samplerate = i64(fmt_chunk.sample_rate)
+    prepared_file.original_samplerate = u64(fmt_chunk.sample_rate)
 
     if fmt_chunk.block_align != fmt_chunk.num_channels * fmt_chunk.bits_per_sample / 8 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Block_Align
@@ -275,33 +276,34 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .DATA_Chunk_Invalid_Size
     }
 
-    // fmt.println(data_chunk_header^)
+    fmt.println(data_chunk_header^)
 
-    prepared_file.original_data_size = i64(data_chunk_header.size)
+    prepared_file.original_data_size = u64(data_chunk_header.size)
 
     // WILD WEST STARTS HERE
 
-    deinterleaved_channel_data_size := int(data_chunk_header.size) / int(prepared_file.original_bit_depth) * 32 / int(prepared_file.channels)
-    deinterleaved_channel_data_size_aligned := mem.align_formula(deinterleaved_channel_data_size, 64)
-    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * int(prepared_file.channels))
-    assert(int(deinterleaved_data_size) == mem.align_formula(int(deinterleaved_data_size), 64))
-    // fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
+    deinterleaved_channel_data_size := uint(data_chunk_header.size) / uint(prepared_file.original_bit_depth) * 32 / uint(prepared_file.channels)
+    deinterleaved_channel_data_size_aligned := mem.align_forward_uint(deinterleaved_channel_data_size, 64)
+    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * uint(prepared_file.channels))
+
+    fmt.println(file.name)
+    fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
 
     // TODO: Represent channels somehow? Change the struct to only hold a single memory block and then represent the channels as slices or whatever?
 
-    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size)
+    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size, 64)
     if deinterleaved_data_memory_block_error != nil {
         return Loaded_File{}, .Memory_Allocation_Failed
     }
     mem.zero_slice(deinterleaved_data_memory_block.base[:deinterleaved_data_memory_block.committed])
-    defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
-
-    // fmt.println(deinterleaved_data_memory_block)
-
     deinterleaved_data_memory_block.used = deinterleaved_data_size
-    mem.zero_slice(deinterleaved_data_memory_block.base[deinterleaved_data_memory_block.used:deinterleaved_data_memory_block.committed])
 
-    // fmt.println()
+
+    // Testing so it doesn't leak, should be deallocated in caller function
+    // defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
+
+    fmt.println(deinterleaved_data_memory_block)
+    fmt.println()
 
     return prepared_file, .None
 }
