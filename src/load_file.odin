@@ -18,14 +18,14 @@ Int_Or_Float :: enum {
 }
 
 Loaded_File :: struct {
-    memory_block:        virtual.Memory_Block,
-    channels:            u64,
-    channel_length:      u64,
-    original_path:       string,
-    original_samplerate: u64,
-    original_bit_depth:  u64,
-    original_format:     Int_Or_Float,
-    original_data_size:  u64,
+    data:                  []f32,
+    channel_count:         u64,
+    challen_length_useful: u64,
+    original_path:         string,
+    original_samplerate:   u64,
+    original_bit_depth:    u64,
+    original_format:       Int_Or_Float,
+    original_data_size:    u64,
 }
 
 Load_File_Error :: enum {
@@ -52,7 +52,7 @@ Load_File_Error :: enum {
     DATA_Chunk_Not_Found,
     DATA_Chunk_Empty,
     DATA_Chunk_Invalid_Size,
-    Memory_Allocation_Failed,
+    Allocation_Failed,
 }
 
 load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Load_File_Error) {
@@ -195,7 +195,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     if fmt_chunk.num_channels == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Channel_Count
     }
-    prepared_file.channels = u64(fmt_chunk.num_channels)
+    prepared_file.channel_count = u64(fmt_chunk.num_channels)
 
     switch fmt_chunk.bits_per_sample {
     case 8, 16, 24, 32, 64:
@@ -282,30 +282,30 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
 
     // WILD WEST STARTS HERE
 
-    deinterleaved_channel_data_size := uint(data_chunk_header.size) / uint(prepared_file.original_bit_depth) * 32 / uint(prepared_file.channels)
+    deinterleaved_channel_data_size := uint(data_chunk_header.size) / uint(prepared_file.original_bit_depth) * 32 / uint(prepared_file.channel_count)
     deinterleaved_channel_data_size_aligned := mem.align_forward_uint(deinterleaved_channel_data_size, 64)
-    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * uint(prepared_file.channels))
+    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * uint(prepared_file.channel_count))
+
+    prepared_file.challen_length_useful = u64(deinterleaved_channel_data_size) / 4 // Bytes in 32 bits
 
     fmt.println(file.name)
     fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
 
     // TODO: Represent channels somehow? Change the struct to only hold a single memory block and then represent the channels as slices or whatever?
 
-    deinterleaved_data_memory_block, deinterleaved_data_memory_block_error := virtual.memory_block_alloc(deinterleaved_data_size, deinterleaved_data_size, 64)
-    if deinterleaved_data_memory_block_error != nil {
-        return Loaded_File{}, .Memory_Allocation_Failed
+    deinterleaved_data_bytes, deinterleaved_data_allocator_error := virtual.reserve_and_commit(deinterleaved_data_size)
+    if deinterleaved_data_allocator_error != .None {
+        return Loaded_File{}, .Allocation_Failed
     }
-    mem.zero_slice(deinterleaved_data_memory_block.base[:deinterleaved_data_memory_block.committed])
-    deinterleaved_data_memory_block.used = deinterleaved_data_size
+    mem.zero_slice(deinterleaved_data_bytes)
 
+    prepared_file.data = mem.slice_data_cast([]f32, deinterleaved_data_bytes)
 
-    // Testing so it doesn't leak, should be deallocated in caller function
-    // defer virtual.memory_block_dealloc(deinterleaved_data_memory_block)
+    // FOR TESTING
+    defer virtual.release(raw_data(deinterleaved_data_bytes), deinterleaved_data_size)
 
-    fmt.println(deinterleaved_data_memory_block)
+    // fmt.println(deinterleaved_data_bytes)
     fmt.println()
 
     return prepared_file, .None
 }
-
-// TODO: WHAT'S GOING ON WITH THE FILE NAME SLICE???
