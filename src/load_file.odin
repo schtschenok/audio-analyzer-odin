@@ -122,6 +122,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     if map_error != nil {
         return Loaded_File{}, .File_Map_Error
     }
+    assert(file_size == len(raw_file_bytes))
     defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
 
     get_next_chunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^uint) -> (chunk_data: ^T, chunk_found: bool) {
@@ -406,6 +407,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     // fmt.println()
 
     assert(loaded_file_validate(&loaded_file))
+
     return loaded_file, .None
 }
 
@@ -432,7 +434,7 @@ loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> (success: bool) {
         return false
     }
 
-    virtual.release(raw_data(loaded_file.data), len(loaded_file.data))
+    virtual.release(raw_data(loaded_file.data), len(loaded_file.data) * size_of(f32))
     delete_string(loaded_file.original_path)
     loaded_file^ = Loaded_File{}
     return true
