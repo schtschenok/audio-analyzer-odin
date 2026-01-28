@@ -337,7 +337,7 @@ loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> bool {
 loaded_file_get_channel :: proc(loaded_file: ^Loaded_File, channel: uint) -> ([]f32, bool) {
     assert(loaded_file_validate(loaded_file))
 
-    if !loaded_file_validate(loaded_file) {
+    if !loaded_file_validate(loaded_file) || !(channel < loaded_file.channel_count) {
         return nil, false
     }
 
