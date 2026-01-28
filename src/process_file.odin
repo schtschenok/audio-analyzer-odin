@@ -1,9 +1,9 @@
 package main
 
+import "core:fmt"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
-import "core:fmt"
 import "core:reflect"
 
 Process_File_Error :: enum {
@@ -40,18 +40,16 @@ process_file :: proc(file: os.File_Info) -> ([][]f32, Process_File_Error) {
         delete(frame_arena_data)
     }
 
-    default_allocator := context.allocator
-    context.allocator = mem.panic_allocator()
-
-    prepared_file, read_file_error := load_file(file)
+    loaded_file, read_file_error := load_file(file)
 
     if read_file_error != .None {
         fmt.printfln("File: %s, error: %s", file.fullpath, reflect.enum_string(read_file_error))
         return nil, .Cant_Read_File
     } else {
-        perf.bytes_processed += u64(prepared_file.original_data_size)
+        perf.bytes_processed += u64(loaded_file.original_data_size)
     }
 
-    context.allocator = default_allocator
+    loaded_file_unload(&loaded_file)
+
     return nil, .None
 }

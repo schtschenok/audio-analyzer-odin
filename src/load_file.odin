@@ -19,13 +19,13 @@ Int_Or_Float :: enum {
 
 Loaded_File :: struct {
     data:                  []f32,
-    channel_count:         u64,
-    challen_length_useful: u64,
+    channel_count:         uint,
+    channel_useful_length: uint,
     original_path:         string,
-    original_samplerate:   u64,
-    original_bit_depth:    u64,
+    original_samplerate:   uint,
+    original_bit_depth:    uint,
     original_format:       Int_Or_Float,
-    original_data_size:    u64,
+    original_data_size:    uint, // Needed mostly for statistics, so not even validated
 }
 
 Load_File_Error :: enum {
@@ -112,7 +112,8 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     }
     defer os.close(fd)
 
-    file_size, size_error := os.file_size(fd)
+    file_size_i64, size_error := os.file_size(fd)
+    file_size := uint(file_size_i64)
     if size_error != nil {
         return Loaded_File{}, .File_Open_Error
     }
@@ -127,7 +128,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     }
     defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
 
-    get_next_chunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^i64) -> (chunk_data: ^T, chunk_found: bool) {
+    get_next_chunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^uint) -> (chunk_data: ^T, chunk_found: bool) {
         previous_chunk_size: u32
         if string(previous_chunk_header.marker[:]) == "RIFF" {
             previous_chunk_size = 4
@@ -136,9 +137,9 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         }
 
         for {
-            current_offset^ = current_offset^ + size_of(Wave_Chunk_Header) + i64(previous_chunk_size)
+            current_offset^ = current_offset^ + size_of(Wave_Chunk_Header) + uint(previous_chunk_size)
 
-            if i64(len(data)) < current_offset^ + size_of(T) {
+            if uint(len(data)) < current_offset^ + size_of(T) {
                 return nil, false
             }
             if string(marker[:]) == string(data[current_offset^:current_offset^ + 4]) {
@@ -153,7 +154,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return (^T)(raw_data(data[current_offset^:])), true
     }
 
-    current_offset: i64 = 0
+    current_offset: uint = 0
     riff_header_in_file := (^Wave_RIFF_Chunk)(raw_data(raw_file_bytes))
 
     switch string(riff_header_in_file.chunk_header.marker[:]) {
@@ -172,11 +173,11 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .RIFF_Chunk_Invalid_Header
     }
 
-    if file_size < i64(riff_header_in_file.chunk_header.size) {
+    if file_size < uint(riff_header_in_file.chunk_header.size) {
         return Loaded_File{}, .File_Early_EOF
     }
 
-    if strict && file_size < size_of(Wave_Chunk_Header) + i64(riff_header_in_file.chunk_header.size) {
+    if strict && file_size < size_of(Wave_Chunk_Header) + uint(riff_header_in_file.chunk_header.size) {
         return Loaded_File{}, .RIFF_Chunk_Invalid_Size
     }
 
@@ -188,18 +189,18 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .FMT_Chunk_Not_Found
     }
 
-    fmt.println(fmt_chunk^)
+    // fmt.println(fmt_chunk^)
 
-    prepared_file: Loaded_File
+    loaded_file: Loaded_File
 
     if fmt_chunk.num_channels == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Channel_Count
     }
-    prepared_file.channel_count = u64(fmt_chunk.num_channels)
+    loaded_file.channel_count = uint(fmt_chunk.num_channels)
 
     switch fmt_chunk.bits_per_sample {
     case 8, 16, 24, 32, 64:
-        prepared_file.original_bit_depth = u64(fmt_chunk.bits_per_sample)
+        loaded_file.original_bit_depth = uint(fmt_chunk.bits_per_sample)
     case 0:
         return Loaded_File{}, .FMT_Chunk_Invalid_Bit_Depth
     case:
@@ -209,7 +210,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     if fmt_chunk.sample_rate == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Samplerate
     }
-    prepared_file.original_samplerate = u64(fmt_chunk.sample_rate)
+    loaded_file.original_samplerate = uint(fmt_chunk.sample_rate)
 
     if fmt_chunk.block_align != fmt_chunk.num_channels * fmt_chunk.bits_per_sample / 8 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Block_Align
@@ -218,11 +219,11 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     fmt_extended_chunk: ^Wave_FMT_Extended_Chunk // Declare it here so I can see it in the debugger
     switch fmt_chunk.audio_format {
     case .Int:
-        prepared_file.original_format = .Int
+        loaded_file.original_format = .Int
     case .Float:
-        prepared_file.original_format = .Float
+        loaded_file.original_format = .Float
     case .Extended:
-        if file_size < current_offset + i64(size_of(Wave_FMT_Extended_Chunk)) {
+        if file_size < current_offset + uint(size_of(Wave_FMT_Extended_Chunk)) {
             return Loaded_File{}, .File_Early_EOF
         }
         fmt_extended_chunk_in_file := (^Wave_FMT_Extended_Chunk)(fmt_chunk_in_file)
@@ -244,9 +245,9 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
 
         switch fmt_extended_chunk.sub_format.audio_format {
         case .Int:
-            prepared_file.original_format = .Int
+            loaded_file.original_format = .Int
         case .Float:
-            prepared_file.original_format = .Float
+            loaded_file.original_format = .Float
         case:
             return Loaded_File{}, .FMT_Chunk_Unsupported_Format
         }
@@ -262,13 +263,13 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .DATA_Chunk_Not_Found
     }
 
-    if data_chunk_header^.size == 0 {
+    if data_chunk_header.size == 0 {
         return Loaded_File{}, .DATA_Chunk_Empty
     }
 
     current_offset += size_of(Wave_Chunk_Header) // Actual data start
 
-    if file_size < current_offset + i64(data_chunk_header.size) {
+    if file_size < current_offset + uint(data_chunk_header.size) {
         return Loaded_File{}, .File_Early_EOF
     }
 
@@ -276,36 +277,70 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .DATA_Chunk_Invalid_Size
     }
 
-    fmt.println(data_chunk_header^)
+    loaded_file.original_data_size = uint(data_chunk_header.size)
 
-    prepared_file.original_data_size = u64(data_chunk_header.size)
+    // fmt.println(data_chunk_header^)
 
-    // WILD WEST STARTS HERE
+    deinterleaved_channel_size := uint(data_chunk_header.size) / uint(loaded_file.original_bit_depth / 8) * size_of(f32) / uint(loaded_file.channel_count)
+    deinterleaved_channel_size_aligned := mem.align_forward_uint(deinterleaved_channel_size, mem.DEFAULT_PAGE_SIZE)
+    deinterleaved_total_size := deinterleaved_channel_size_aligned * uint(loaded_file.channel_count)
 
-    deinterleaved_channel_data_size := uint(data_chunk_header.size) / uint(prepared_file.original_bit_depth) * 32 / uint(prepared_file.channel_count)
-    deinterleaved_channel_data_size_aligned := mem.align_forward_uint(deinterleaved_channel_data_size, 64)
-    deinterleaved_data_size := uint(deinterleaved_channel_data_size_aligned * uint(prepared_file.channel_count))
+    loaded_file.channel_useful_length = deinterleaved_channel_size / size_of(f32)
 
-    prepared_file.challen_length_useful = u64(deinterleaved_channel_data_size) / 4 // Bytes in 32 bits
+    // fmt.println(file.name)
+    // fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_total_size)
 
-    fmt.println(file.name)
-    fmt.printfln("Deinterleaved Data Size: %d", deinterleaved_data_size)
-
-    // TODO: Represent channels somehow? Change the struct to only hold a single memory block and then represent the channels as slices or whatever?
-
-    deinterleaved_data_bytes, deinterleaved_data_allocator_error := virtual.reserve_and_commit(deinterleaved_data_size)
+    deinterleaved_data_bytes, deinterleaved_data_allocator_error := virtual.reserve_and_commit(deinterleaved_total_size)
     if deinterleaved_data_allocator_error != .None {
         return Loaded_File{}, .Allocation_Failed
     }
     mem.zero_slice(deinterleaved_data_bytes)
 
-    prepared_file.data = mem.slice_data_cast([]f32, deinterleaved_data_bytes)
+    loaded_file.data = slice.reinterpret([]f32, deinterleaved_data_bytes)
+    loaded_file.original_path = strings.clone(file.fullpath)
 
-    // FOR TESTING
-    defer virtual.release(raw_data(deinterleaved_data_bytes), deinterleaved_data_size)
+    // fmt.println(loaded_file) // Prints the actual data (please no)
+    // fmt.println()
 
-    // fmt.println(deinterleaved_data_bytes)
-    fmt.println()
+    assert(loaded_file_validate(&loaded_file))
+    return loaded_file, .None
+}
 
-    return prepared_file, .None
+loaded_file_validate :: proc(loaded_file: ^Loaded_File) -> bool {
+    if loaded_file == nil || loaded_file.data == nil {
+        return false
+    }
+
+    a := bool(loaded_file.channel_count)
+    b := bool(loaded_file.channel_useful_length)
+    c := bool(loaded_file.original_bit_depth)
+    d := loaded_file.original_format == .Int || loaded_file.original_format == .Float
+    e := bool(loaded_file.original_samplerate)
+    f := bool(len(loaded_file.original_path))
+    g := uint(len(loaded_file.data)) == loaded_file.channel_count * mem.align_forward_uint(loaded_file.channel_useful_length, mem.DEFAULT_PAGE_SIZE / size_of(f32))
+    return a && b && c && d && e && f && g
+}
+
+loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> bool {
+    assert(loaded_file_validate(loaded_file))
+
+    if loaded_file == nil || loaded_file.data == nil {
+        return false
+    }
+
+    virtual.release(raw_data(loaded_file.data), len(loaded_file.data))
+    delete_string(loaded_file.original_path)
+    loaded_file^ = Loaded_File{}
+    return true
+}
+
+loaded_file_get_channel :: proc(loaded_file: ^Loaded_File, channel: uint) -> ([]f32, bool) {
+    assert(loaded_file_validate(loaded_file))
+
+    if !loaded_file_validate(loaded_file) {
+        return nil, false
+    }
+
+    channel_size_aligned := uint(len(loaded_file.data)) / loaded_file.channel_count
+    return loaded_file.data[channel * channel_size_aligned:channel * channel_size_aligned + loaded_file.channel_useful_length], true
 }
