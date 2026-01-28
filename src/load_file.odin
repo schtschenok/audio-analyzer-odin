@@ -341,6 +341,5 @@ loaded_file_get_channel :: proc(loaded_file: ^Loaded_File, channel: uint) -> ([]
         return nil, false
     }
 
-    channel_size_aligned := uint(len(loaded_file.data)) / loaded_file.channel_count
-    return loaded_file.data[channel * channel_size_aligned:][:loaded_file.channel_useful_length], true
+    return loaded_file.data[channel * uint(len(loaded_file.data)) / loaded_file.channel_count:][:loaded_file.channel_useful_length], true
 }
