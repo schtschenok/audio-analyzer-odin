@@ -1,15 +1,11 @@
 package main
 
 import "base:runtime"
-import "core:bytes"
-import "core:flags"
-import "core:fmt"
-import "core:log"
+import "core:math/bits"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
 import "core:slice"
-import "core:sort"
 import "core:strings"
 
 Int_Or_Float :: enum {
@@ -21,11 +17,11 @@ Loaded_File :: struct {
     data:                  []f32,
     channel_count:         uint,
     channel_useful_length: uint,
+    samplerate:            uint,
     original_path:         string,
-    original_samplerate:   uint,
     original_bit_depth:    uint,
     original_format:       Int_Or_Float,
-    original_data_size:    uint, // Needed mostly for statistics, so not even validated
+    original_data_size:    uint,
 }
 
 Load_File_Error :: enum {
@@ -210,13 +206,13 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     if fmt_chunk.sample_rate == 0 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Samplerate
     }
-    loaded_file.original_samplerate = uint(fmt_chunk.sample_rate)
+    loaded_file.samplerate = uint(fmt_chunk.sample_rate)
 
     if fmt_chunk.block_align != fmt_chunk.num_channels * fmt_chunk.bits_per_sample / 8 {
         return Loaded_File{}, .FMT_Chunk_Invalid_Block_Align
     }
 
-    fmt_extended_chunk: ^Wave_FMT_Extended_Chunk // Declare it here so I can see it in the debugger
+    fmt_extended_chunk: ^Wave_FMT_Extended_Chunk
     switch fmt_chunk.audio_format {
     case .Int:
         loaded_file.original_format = .Int
@@ -267,7 +263,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .DATA_Chunk_Empty
     }
 
-    current_offset += size_of(Wave_Chunk_Header) // Actual data start
+    current_offset += size_of(Wave_Chunk_Header) // Actual data start offset
 
     if file_size < current_offset + uint(data_chunk_header.size) {
         return Loaded_File{}, .File_Early_EOF
@@ -299,6 +295,113 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     loaded_file.data = slice.reinterpret([]f32, deinterleaved_data_bytes)
     loaded_file.original_path = strings.clone(file.fullpath)
 
+    loaded_file_validate(&loaded_file)
+
+    // Hot!
+    current_channel: uint = 0
+    current_sample: uint = 0
+    data_length: uint = len(loaded_file.data)
+    channel_count: uint = loaded_file.channel_count
+    channel_length: uint = data_length / channel_count
+    channel_useful_length: uint = loaded_file.channel_useful_length
+    sample_size := loaded_file.original_bit_depth / 8
+    data_in_file := raw_data(raw_file_bytes[current_offset:])
+    data_size_in_file := channel_count * loaded_file.channel_useful_length * sample_size
+    U8_TO_F32_MULTIPLIER :: 1.0 / 255.0 // Not 256 since it's unsigned!
+    I16_TO_F32_MULTIPLIER :: 1.0 / 32768.0
+    I24_TO_F32_MULTIPLIER :: 1.0 / 8388608.0
+    I32_TO_F32_MULTIPLIER :: 1.0 / 2147483648.0
+    switch loaded_file.original_bit_depth {
+    // Int (but unsigned!)
+    case 8:
+        result: u8
+        for {
+            if current_sample >= data_size_in_file { break }
+
+            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+            mem.copy(&result, data_in_file[current_sample:], size_of(u8))
+            loaded_file.data[index] = f32(result) * U8_TO_F32_MULTIPLIER
+
+            current_sample += sample_size
+        }
+    // Int
+    case 16:
+        result: i16
+        for {
+            if current_sample >= data_size_in_file { break }
+
+            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+            mem.copy(&result, data_in_file[current_sample:], size_of(i16))
+            loaded_file.data[index] = f32(result) * I16_TO_F32_MULTIPLIER
+
+            current_sample += sample_size
+        }
+    // Int
+    case 24:
+        result: i32
+        for {
+            if current_sample >= data_size_in_file { break }
+
+            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+            mem.copy(&result, data_in_file[current_sample:], 3) // Size of 24-bit integer!
+            result = result << 8
+            loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
+
+            // TODO: Compare performance, check if they're equal on real data.
+            // result = i32(data_in_file[current_sample]) << 8 | i32(data_in_file[current_sample + 1]) << 16 | i32(data_in_file[current_sample + 2]) << 24
+            // loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
+
+            // assert(result == i32(data_in_file[current_sample]) << 8 | i32(data_in_file[current_sample + 1]) << 16 | i32(data_in_file[current_sample + 2]) << 24)
+
+            current_sample += sample_size
+        }
+    // Int or Float
+    case 32:
+        switch loaded_file.original_format {
+        case .Int:
+            result: i32
+            for {
+                if current_sample >= data_size_in_file { break }
+
+                index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+                mem.copy(&result, data_in_file[current_sample:], size_of(i32))
+                loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
+
+                current_sample += sample_size
+            }
+        case .Float:
+            result: f32
+            for {
+                if current_sample >= data_size_in_file { break }
+
+                index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+                mem.copy(&result, data_in_file[current_sample:], size_of(f32))
+                loaded_file.data[index] = f32(result)
+
+                current_sample += sample_size
+            }
+        }
+    // Float
+    case 64:
+        result: f64
+        for {
+            if current_sample >= data_size_in_file { break }
+
+            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+
+            mem.copy(&result, data_in_file[current_sample:], size_of(f64))
+            loaded_file.data[index] = f32(result)
+
+            current_sample += sample_size
+        }
+    }
+    // TODO: Check correctness!
+
     // fmt.println(loaded_file) // Prints the actual data (please no)
     // fmt.println()
 
@@ -306,7 +409,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     return loaded_file, .None
 }
 
-loaded_file_validate :: proc(loaded_file: ^Loaded_File) -> bool {
+loaded_file_validate :: proc(loaded_file: ^Loaded_File) -> (success: bool) {
     if loaded_file == nil || loaded_file.data == nil {
         return false
     }
@@ -315,13 +418,14 @@ loaded_file_validate :: proc(loaded_file: ^Loaded_File) -> bool {
     b := bool(loaded_file.channel_useful_length)
     c := bool(loaded_file.original_bit_depth)
     d := loaded_file.original_format == .Int || loaded_file.original_format == .Float
-    e := bool(loaded_file.original_samplerate)
+    e := bool(loaded_file.samplerate)
     f := bool(len(loaded_file.original_path))
     g := uint(len(loaded_file.data)) == loaded_file.channel_count * mem.align_forward_uint(loaded_file.channel_useful_length, mem.DEFAULT_PAGE_SIZE / size_of(f32))
+    h := loaded_file.channel_count * loaded_file.channel_useful_length * (loaded_file.original_bit_depth / 8) <= loaded_file.original_data_size
     return a && b && c && d && e && f && g
 }
 
-loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> bool {
+loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> (success: bool) {
     assert(loaded_file_validate(loaded_file))
 
     if loaded_file == nil || loaded_file.data == nil {
@@ -334,12 +438,12 @@ loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> bool {
     return true
 }
 
-loaded_file_get_channel :: proc(loaded_file: ^Loaded_File, channel: uint) -> ([]f32, bool) {
+loaded_file_get_channel :: proc(loaded_file: ^Loaded_File, channel_index: uint) -> (channel: []f32, success: bool) {
     assert(loaded_file_validate(loaded_file))
 
-    if !loaded_file_validate(loaded_file) || !(channel < loaded_file.channel_count) {
+    if !loaded_file_validate(loaded_file) || !(channel_index < loaded_file.channel_count) {
         return nil, false
     }
 
-    return loaded_file.data[channel * uint(len(loaded_file.data)) / loaded_file.channel_count:][:loaded_file.channel_useful_length], true
+    return loaded_file.data[channel_index * uint(len(loaded_file.data)) / loaded_file.channel_count:][:loaded_file.channel_useful_length], true
 }
