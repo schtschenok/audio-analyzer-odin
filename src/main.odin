@@ -84,6 +84,8 @@ main :: proc() {
             } else {
                 perf.files_processed += 1
             }
+            
+            free_all(context.temp_allocator)
         }
     }
 

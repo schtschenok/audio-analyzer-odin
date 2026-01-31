@@ -1,7 +1,6 @@
 package main
 
 import "base:runtime"
-import "core:math/bits"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
@@ -123,7 +122,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         return Loaded_File{}, .File_Map_Error
     }
     assert(file_size == len(raw_file_bytes))
-    defer virtual.release(raw_data(raw_file_bytes), len(raw_file_bytes))
+    defer unmap_file(raw_file_bytes)
 
     get_next_chunk_with_marker :: proc(data: []byte, previous_chunk_header: ^Wave_Chunk_Header, marker: string, $T: typeid, current_offset: ^uint) -> (chunk_data: ^T, chunk_found: bool) {
         previous_chunk_size: u32
@@ -308,7 +307,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     sample_size := loaded_file.original_bit_depth / 8
     data_in_file := raw_data(raw_file_bytes[current_offset:])
     data_size_in_file := channel_count * loaded_file.channel_useful_length * sample_size
-    U8_TO_F32_MULTIPLIER :: 1.0 / 255.0 // Not 256 since it's unsigned!
+    U8_TO_F32_MULTIPLIER :: 2.0 / 255.0 // Not 256 since it's unsigned!
     I16_TO_F32_MULTIPLIER :: 1.0 / 32768.0
     I24_TO_F32_MULTIPLIER :: 1.0 / 8388608.0
     I32_TO_F32_MULTIPLIER :: 1.0 / 2147483648.0
@@ -316,23 +315,25 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     // Int (but unsigned!)
     case 8:
         result: u8
-        for {
+        index: uint
+        for {     // TODO: Re-do as C-style for loops
             if current_sample >= data_size_in_file { break }
 
-            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
             mem.copy(&result, data_in_file[current_sample:], size_of(u8))
-            loaded_file.data[index] = f32(result) * U8_TO_F32_MULTIPLIER
+            loaded_file.data[index] = f32(result) * U8_TO_F32_MULTIPLIER - 1
 
             current_sample += sample_size
         }
     // Int
     case 16:
-        result: i16
+        result: i16le
+        index: uint
         for {
             if current_sample >= data_size_in_file { break }
 
-            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
             mem.copy(&result, data_in_file[current_sample:], size_of(i16))
             loaded_file.data[index] = f32(result) * I16_TO_F32_MULTIPLIER
@@ -341,11 +342,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         }
     // Int
     case 24:
-        result: i32
+        result: i32le
+        index: uint
         for {
             if current_sample >= data_size_in_file { break }
 
-            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
             mem.copy(&result, data_in_file[current_sample:], 3) // Size of 24-bit integer!
             result = result << 8
@@ -363,11 +365,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     case 32:
         switch loaded_file.original_format {
         case .Int:
-            result: i32
+            result: i32le
+            index: uint
             for {
                 if current_sample >= data_size_in_file { break }
 
-                index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+                index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
                 mem.copy(&result, data_in_file[current_sample:], size_of(i32))
                 loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
@@ -375,11 +378,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
                 current_sample += sample_size
             }
         case .Float:
-            result: f32
+            result: f32le
+            index: uint
             for {
                 if current_sample >= data_size_in_file { break }
 
-                index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+                index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
                 mem.copy(&result, data_in_file[current_sample:], size_of(f32))
                 loaded_file.data[index] = f32(result)
@@ -389,11 +393,12 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
         }
     // Float
     case 64:
-        result: f64
+        result: f64le
+        index: uint
         for {
             if current_sample >= data_size_in_file { break }
 
-            index := (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
+            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
 
             mem.copy(&result, data_in_file[current_sample:], size_of(f64))
             loaded_file.data[index] = f32(result)
@@ -424,7 +429,7 @@ loaded_file_validate :: proc(loaded_file: ^Loaded_File) -> (success: bool) {
     f := bool(len(loaded_file.original_path))
     g := uint(len(loaded_file.data)) == loaded_file.channel_count * mem.align_forward_uint(loaded_file.channel_useful_length, mem.DEFAULT_PAGE_SIZE / size_of(f32))
     h := loaded_file.channel_count * loaded_file.channel_useful_length * (loaded_file.original_bit_depth / 8) <= loaded_file.original_data_size
-    return a && b && c && d && e && f && g
+    return a && b && c && d && e && f && g && h
 }
 
 loaded_file_unload :: proc(loaded_file: ^Loaded_File) -> (success: bool) {
