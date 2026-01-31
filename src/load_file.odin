@@ -51,7 +51,7 @@ Load_File_Error :: enum {
 }
 
 load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Load_File_Error) {
-    trace("Read File")
+    trace("Load File")
 
     Wave_Chunk_Header :: struct #packed {
         marker: [4]byte,
@@ -297,6 +297,7 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
 
     loaded_file_validate(&loaded_file)
 
+    trace("Read File")
     // Hot!
     current_channel: uint = 0
     current_sample: uint = 0
@@ -314,50 +315,35 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     switch loaded_file.original_bit_depth {
     // Int (but unsigned!)
     case 8:
-        result: u8
-        index: uint
-        for {     // TODO: Re-do as C-style for loops
-            if current_sample >= data_size_in_file { break }
+        value: u8
+        for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
+            mem.copy(&value, data_in_file[current_sample:], size_of(u8))
 
-            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
-            mem.copy(&result, data_in_file[current_sample:], size_of(u8))
-            loaded_file.data[index] = f32(result) * U8_TO_F32_MULTIPLIER - 1
+            loaded_file.data[index] = f32(value) * U8_TO_F32_MULTIPLIER - 1
 
             current_sample += sample_size
         }
     // Int
     case 16:
-        result: i16le
-        index: uint
-        for {
-            if current_sample >= data_size_in_file { break }
+        value: i16le
+        for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
+            mem.copy(&value, data_in_file[current_sample:], size_of(i16))
 
-            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
-            mem.copy(&result, data_in_file[current_sample:], size_of(i16))
-            loaded_file.data[index] = f32(result) * I16_TO_F32_MULTIPLIER
+            loaded_file.data[index] = f32(value) * I16_TO_F32_MULTIPLIER
 
             current_sample += sample_size
         }
     // Int
     case 24:
-        result: i32le
-        index: uint
-        for {
-            if current_sample >= data_size_in_file { break }
+        value: i32le
+        for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
+            // Option A
+            mem.copy(&value, data_in_file[current_sample:], 3) // Size of 24-bit integer!
+            value = value << 8
+            // Option B
+            // value = i32le(data_in_file[current_sample]) << 8 | i32le(data_in_file[current_sample + 1]) << 16 | i32le(data_in_file[current_sample + 2]) << 24
 
-            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
-            mem.copy(&result, data_in_file[current_sample:], 3) // Size of 24-bit integer!
-            result = result << 8
-            loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
-
-            // TODO: Compare performance, check if they're equal on real data.
-            // result = i32(data_in_file[current_sample]) << 8 | i32(data_in_file[current_sample + 1]) << 16 | i32(data_in_file[current_sample + 2]) << 24
-            // loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
-
-            // assert(result == i32(data_in_file[current_sample]) << 8 | i32(data_in_file[current_sample + 1]) << 16 | i32(data_in_file[current_sample + 2]) << 24)
+            loaded_file.data[index] = f32(value) * I32_TO_F32_MULTIPLIER
 
             current_sample += sample_size
         }
@@ -365,28 +351,20 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     case 32:
         switch loaded_file.original_format {
         case .Int:
-            result: i32le
-            index: uint
-            for {
-                if current_sample >= data_size_in_file { break }
+            value: i32le
+            for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
+                mem.copy(&value, data_in_file[current_sample:], size_of(i32))
 
-                index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
-                mem.copy(&result, data_in_file[current_sample:], size_of(i32))
-                loaded_file.data[index] = f32(result) * I32_TO_F32_MULTIPLIER
+                loaded_file.data[index] = f32(value) * I32_TO_F32_MULTIPLIER
 
                 current_sample += sample_size
             }
         case .Float:
-            result: f32le
-            index: uint
-            for {
-                if current_sample >= data_size_in_file { break }
+            value: f32le
+            for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
+                mem.copy(&value, data_in_file[current_sample:], size_of(f32))
 
-                index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
-                mem.copy(&result, data_in_file[current_sample:], size_of(f32))
-                loaded_file.data[index] = f32(result)
+                loaded_file.data[index] = f32(value)
 
                 current_sample += sample_size
             }
@@ -394,13 +372,9 @@ load_file :: proc(file: os.File_Info, strict: bool = false) -> (Loaded_File, Loa
     // Float
     case 64:
         result: f64le
-        index: uint
-        for {
-            if current_sample >= data_size_in_file { break }
-
-            index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length
-
+        for index: uint = 0; current_sample < data_size_in_file; index = (current_sample / sample_size / channel_count) + (current_sample / sample_size) % channel_count * channel_length {
             mem.copy(&result, data_in_file[current_sample:], size_of(f64))
+
             loaded_file.data[index] = f32(result)
 
             current_sample += sample_size

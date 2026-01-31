@@ -60,6 +60,30 @@
         }
     },
     {
+        "label": "Build Fast Release (Windows)",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -o:aggressive -no-bounds-check -out:build\\frelease.exe",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": true,
+        "shell": {
+            "program": "cmd.exe"
+        }
+    },
+    {
+        "label": "Run Fast Release (Windows)",
+        "command": "(IF not exist \"build\" (mkdir \"build\")) && odin build src -o:aggressive -no-bounds-check -no-type-assert -out:build\\frelease.exe && build\\frelease.exe data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": false,
+        "shell": {
+            "program": "cmd.exe"
+        }
+    },
+    {
         "label": "Build Debug (Linux)",
         "command": "mkdir -p build && odin build src -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build/debug",
         "use_new_terminal": false,
@@ -67,6 +91,15 @@
         "reveal": "no_focus",
         "hide": "never",
         "show_summary": true
+    },
+    {
+        "label": "Run Debug (Linux)",
+        "command": "mkdir -p build && odin build src -define:TRACKING_ALLOCATOR=true -debug -o:none -warnings-as-errors -out:build/debug && build/debug data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": false
     },
     {
         "label": "Build Release (Linux)",
@@ -80,6 +113,24 @@
     {
         "label": "Run Release (Linux)",
         "command": "mkdir -p build && odin build src -define:SPALL=true -debug -o:speed -out:build/release && build/release data",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": false
+    },
+    {
+        "label": "Build Fast Release (Linux)",
+        "command": "mkdir -p build && odin build src -o:aggressive -no-bounds-check -out:build/frelease",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "no_focus",
+        "hide": "never",
+        "show_summary": true
+    },
+    {
+        "label": "Run Fast Release (Linux)",
+        "command": "mkdir -p build && odin build src -o:aggressive -no-bounds-check  -out:build/frelease && build/frelease data",
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "no_focus",
